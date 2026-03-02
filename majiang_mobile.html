@@ -124,6 +124,18 @@ button:disabled{opacity:0.3;cursor:not-allowed;}
 .btn-group{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px;}
 .btn-next{background:#ffd600;color:#333;font-size:0.95rem;padding:10px 22px;}
 .btn-reset{background:#e53935;color:#fff;font-size:0.8rem;padding:8px 14px;}
+/* 宽屏三栏布局 */
+.side{display:none;}
+#main{width:100%;}
+#desktop-layout{width:100%;}
+@media(min-width:1100px){
+  #top-bar,#score-bar{max-width:1400px;}
+  #main{max-width:1400px;}
+  #desktop-layout{display:grid;grid-template-columns:300px 1fr 260px;gap:10px;align-items:start;padding:0 6px;}
+  #game-wrap{max-width:none;}
+  .side{display:block;background:rgba(0,0,0,0.35);border-radius:12px;padding:10px;max-height:76vh;overflow:auto;}
+  .side h3{color:#ffd700;font-size:0.9rem;margin-bottom:8px;}
+}
 </style>
 </head>
 <body>
@@ -143,7 +155,13 @@ button:disabled{opacity:0.3;cursor:not-allowed;}
   <div class="score-item"><div class="sname">🤖北<span id="d2"></span></div><div class="spts zero" id="s2">0</div><div class="sdelta" id="sd2"></div></div>
   <div class="score-item"><div class="sname">🤖西<span id="d3"></span></div><div class="spts zero" id="s3">0</div><div class="sdelta" id="sd3"></div></div>
 </div>
-<div id="game-wrap">
+<div id="main">
+  <div id="desktop-layout">
+    <aside id="left-panel" class="side">
+      <h3>🧾 对局记录</h3>
+      <div id="history-list"></div>
+    </aside>
+    <div id="game-wrap">
   <div id="board">
     <div id="row-top"><div class="player-area" id="area-2">
       <div class="player-label">🤖北<span class="dealer-tag" id="dtag2" style="display:none">庄</span><span id="wtag2" style="display:none" class="warn-tag">⚠警</span><span id="qtag2" style="display:none" class="qq-tag">千秋</span></div>
@@ -191,6 +209,12 @@ button:disabled{opacity:0.3;cursor:not-allowed;}
     <button id="btn-pass" onclick="act('pass')" style="display:none">过</button>
     <button id="btn-baojing" onclick="act('baojing')" style="display:none">⚠报警</button>
     <button id="btn-restart" onclick="resetAll()">重置</button>
+  </div>
+  </div>
+    <aside id="right-panel" class="side">
+      <h3>🔍 牌情</h3>
+      <div id="ts-right"></div>
+    </aside>
   </div>
 </div>
 
@@ -407,6 +431,7 @@ function isQingPai(origTiles,expTiles,bao){
 // ══════════════════════════════════════════
 // 状态
 // ══════════════════════════════════════════
+const HISTORY = [];
 let TOTAL={scores:[0,0,0,0],roundNum:1,dealer:0};
 let G={};
 function initG(){
@@ -426,6 +451,9 @@ function initG(){
     warned:[false,false,false,false],
     qianqiu:[false,false,false,false],
     haidi:false,floor:0,
+    _lastDrawTile:[null,null,null,null],
+    lastWinTile:null,
+    lastWinBy:-1,
   };
 }
 function updateActiveTurn(p){for(let i=0;i<4;i++){const e=document.getElementById('area-'+i);if(e)e.classList.toggle('active-turn',i===p&&!G.over);}}
@@ -433,14 +461,15 @@ function updateActiveTurn(p){for(let i=0;i<4;i++){const e=document.getElementByI
 // ══════════════════════════════════════════
 // 牌情面板
 // ══════════════════════════════════════════
-function buildTileStatus(){
+function renderTileStatusInto(c){
+  if(!c)return;
   const gone={};
   for(let p=0;p<4;p++){
     G.discards[p].forEach(t=>{const k=tk(t);gone[k]=(gone[k]||0)+1;});
     G.melds[p].forEach(m=>m.tiles.forEach(t=>{const k=tk(t);gone[k]=(gone[k]||0)+1;}));
   }
   if(G.indicator){const k=tk(G.indicator);gone[k]=(gone[k]||0)+1;}
-  const c=document.getElementById('ts-content');c.innerHTML='';
+  c.innerHTML='';
   const suits=[{key:'tong',label:'筒',color:'#1565c0',vals:[1,2,3,4,5,6,7,8,9]},
     {key:'tiao',label:'条',color:'#2e7d32',vals:[1,2,3,4,5,6,7,8,9]},
     {key:'wan',label:'万',color:'#c62828',vals:[1,2,3,4,5,6,7,8,9]},
@@ -464,6 +493,38 @@ function buildTileStatus(){
       grid.appendChild(cell);
     }
     c.appendChild(sec);
+  }
+}
+function buildTileStatus(){
+  renderTileStatusInto(document.getElementById('ts-content'));
+  renderTileStatusInto(document.getElementById('ts-right'));
+}
+function renderHistory(){
+  const el = document.getElementById('history-list');
+  if(!el) return;
+  el.innerHTML = '';
+  if(HISTORY.length === 0){
+    el.innerHTML = '<div style="color:#aaa;font-size:0.75rem;text-align:center;padding:10px 0;">暂无记录</div>';
+    return;
+  }
+  for(let i = HISTORY.length-1; i >= 0; i--){
+    const h = HISTORY[i];
+    const div = document.createElement('div');
+    div.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:8px;font-size:0.72rem;line-height:1.6;margin-bottom:8px;';
+    const selfTag = h.isSelf
+      ? '<span style="color:#69f0ae;border:1px solid rgba(105,240,174,0.5);border-radius:999px;padding:0 5px;font-size:0.64rem;margin-right:3px;">自摸</span>'
+      : '<span style="color:#ffab91;border:1px solid rgba(255,112,67,0.6);border-radius:999px;padding:0 5px;font-size:0.64rem;margin-right:3px;">点炮</span>';
+    const qingTag = h.isBruin
+      ? '<span style="color:#cfd8dc;border:1px solid rgba(176,190,197,0.7);border-radius:999px;padding:0 5px;font-size:0.64rem;margin-right:3px;">浑</span>'
+      : '<span style="color:#ffd700;border:1px solid rgba(255,214,0,0.5);border-radius:999px;padding:0 5px;font-size:0.64rem;margin-right:3px;">清</span>';
+    const loserText = h.isSelf ? '' : `（炮：${h.loser}）`;
+    div.innerHTML = `
+      <div style="color:#80cbc4;font-weight:bold;margin-bottom:2px;">第${h.round}局 ${selfTag}${qingTag}</div>
+      <div style="color:#ccc;"><b>${h.winner}</b>${loserText} 胡 <b>${h.huTileText}</b></div>
+      <div style="color:#ccc;">${h.typesText}</div>
+      <div style="color:#aaa;font-size:0.68rem;">得分：${h.final}（基础${h.score}）</div>
+    `;
+    el.appendChild(div);
   }
 }
 function showDrawer(type){
@@ -498,7 +559,7 @@ function updateHaidi(){const u=G.deck.length-G.floor;const e=document.getElement
 // ══════════════════════════════════════════
 // 渲染
 // ══════════════════════════════════════════
-function renderAll(){for(let p=0;p<4;p++){renderHand(p);renderMelds(p);renderDiscards(p);}updateTopBar();updateScoreBar();updateTags();updateHaidi();}
+function renderAll(){for(let p=0;p<4;p++){renderHand(p);renderMelds(p);renderDiscards(p);}updateTopBar();updateScoreBar();updateTags();updateHaidi();buildTileStatus();}
 function cOfS(s){return{wan:'#c62828',tiao:'#2e7d32',tong:'#1565c0',zi:'#6a1b9a'}[s]||'#222';}
 function makeTile(t,sz,ex,onClick){
   const d=document.createElement('div');
@@ -613,6 +674,7 @@ function playerDraw(){
   if(G.over||G.phase!=='draw'||G.currentTurn!==0)return;
   const t=drawDeck();
   if(!t){liuju();return;}
+  G._lastDrawTile[0] = {...t};
   G.hands[0].push(t);sortT(G.hands[0]);
   const k=tk(t);let ji=-1;
   for(let i=G.hands[0].length-1;i>=0;i--){if(tk(G.hands[0][i])===k){ji=i;break;}}
@@ -865,6 +927,7 @@ function afterGang(p,isAn=false){
   // 判断是否尾巴招杠（杠的是指示牌→不补牌）
   const isWeiba=G.indicator&&G.melds[p].some(m=>m.type.startsWith('gang')&&teq(m.tiles[0],G.indicator));
   const t2=isWeiba?null:drawDeck();
+  if(t2) G._lastDrawTile[p] = {...t2};
   if(!t2&&!isWeiba){liuju();return;}
   if(t2){
     G.hands[p].push(t2);sortT(G.hands[p]);
@@ -939,6 +1002,7 @@ function aiTurn(p){
   if(G.over||G.currentTurn!==p)return;
   if(G.phase==='draw'){
     const t=drawDeck();if(!t){liuju();return;}
+    G._lastDrawTile[p] = {...t};
     G.hands[p].push(t);sortT(G.hands[p]);renderAll();
     const ag=findAnGang(p);if(ag){setTimeout(()=>{sfxGang();doAnGang(p,ag);},500);return;}
     const jg=findJiaGang(p);if(jg){setTimeout(()=>{sfxGang();doJiaGang(p,jg);},500);return;}
@@ -1219,6 +1283,10 @@ function tryShisanBukao(tiles){
 // ══════════════════════════════════════════
 function doWin(winner,loser,hr,isSelf,isQG=false,qgP=-1){
   if(G.over)return;G.over=true;G.phase='end';updateActiveTurn(-1);
+  G.lastWinTile = isSelf
+    ? (G._lastDrawTile[winner] ? {...G._lastDrawTile[winner]} : null)
+    : (G.lastDiscard ? {...G.lastDiscard} : null);
+  G.lastWinBy = winner;
   const{score,types,isBruin}=hr;
   const extra=(G.gangFlower&&isSelf?10:0)+(G.haidi&&isSelf?10:0);
   const final=score+extra;
@@ -1267,6 +1335,22 @@ function doWin(winner,loser,hr,isSelf,isQG=false,qgP=-1){
   for(let p=0;p<4;p++){G.roundScores[p]+=delta[p];TOTAL.scores[p]+=delta[p];}
   TOTAL.dealer=winner===G.dealer?G.dealer:(G.dealer+1)%4;
   renderAll();updateScoreBar(delta);
+  if(winner >= 0){
+    const _typesText = (hr.types||[]).map(t=>tmap[t]||t).join(' + ') || '未知';
+    const _huTileText = G.lastWinTile ? tn(G.lastWinTile) : '？';
+    HISTORY.push({
+      round: TOTAL.roundNum,
+      winner: PNAME[winner],
+      loser: (loser===null||loser===undefined) ? '' : PNAME[loser],
+      isSelf,
+      isBruin: !!hr.isBruin,
+      score: hr.score,
+      final,
+      typesText: _typesText,
+      huTileText: _huTileText,
+    });
+    renderHistory();
+  }
   showRoundEnd(winner===0?'🎉 你胡牌了！':'😢 '+PNAME[winner]+' 赢了！',PNAME[winner]+'赢！',detail,winner,delta);
 }
 function showRoundEnd(title,sub,detail,winner,delta){
@@ -1290,6 +1374,17 @@ function showRoundEnd(title,sub,detail,winner,delta){
       const sep=document.createElement('span');sep.style.cssText='color:#555;font-size:0.6rem;margin:0 1px';sep.textContent='|';hr2.appendChild(sep);
       m.tiles.forEach(t=>{hr2.appendChild(makeTile(t,'sm','',null));});
     });
+    if(p === winner && G.lastWinTile) {
+      const sep2 = document.createElement('span');
+      sep2.style.cssText = 'color:#555;font-size:0.6rem;margin:0 2px';
+      sep2.textContent = '|';
+      hr2.appendChild(sep2);
+      const tag = document.createElement('span');
+      tag.style.cssText = 'color:#ffd700;font-size:0.68rem;margin-right:2px;';
+      tag.textContent = '胡：';
+      hr2.appendChild(tag);
+      hr2.appendChild(makeTile(G.lastWinTile, 'sm', 'discarded', null));
+    }
     row.appendChild(hr2);area.appendChild(row);
   }
   document.getElementById('win-overlay').classList.add('show');
